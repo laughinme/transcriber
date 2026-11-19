@@ -8,13 +8,34 @@ public struct TranscriptionOptions: Sendable, Hashable {
     public var translateToEnglish: Bool
     /// Short punctuated sentence in the target language; nudges whisper to keep punctuation.
     public var punctuationHint: Bool
+    /// Names and terms that occur in the recordings; whisper spells them as given.
+    public var vocabulary: String
+    /// Two threads at utility priority: slower, but the Mac stays responsive.
+    public var gentle: Bool
 
-    public init(language: String, model: WhisperModel, useVAD: Bool = true, translateToEnglish: Bool = false, punctuationHint: Bool = true) {
+    public init(language: String, model: WhisperModel, useVAD: Bool = true, translateToEnglish: Bool = false,
+                punctuationHint: Bool = true, vocabulary: String = "", gentle: Bool = false) {
         self.language = language
         self.model = model
         self.useVAD = useVAD
         self.translateToEnglish = translateToEnglish
         self.punctuationHint = punctuationHint
+        self.vocabulary = vocabulary
+        self.gentle = gentle
+    }
+
+    /// whisper accepts up to half of its 448-token text context as a prompt.
+    static let vocabularyLimit = 400
+
+    public var prompt: String? {
+        var parts: [String] = []
+        if punctuationHint, let hint = Self.hints[language] { parts.append(hint) }
+        let words = vocabulary.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+        if !words.isEmpty { parts.append(String(words.prefix(Self.vocabularyLimit))) }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 
     static let hints = [
@@ -28,8 +49,9 @@ public struct TranscriptionOptions: Sendable, Hashable {
         var args = ["-m", model.url.path, "-l", language, "-mc", "0", "-oj", "-of", outputBase.path]
         if translateToEnglish { args.append("-tr") }
         if useVAD, let vadModel { args += ["--vad", "-vm", vadModel.path] }
-        // The hint must reach every 30-second window, not only the first one.
-        if punctuationHint, let hint = Self.hints[language] { args += ["--prompt", hint, "--carry-initial-prompt"] }
+        if gentle { args += ["-t", "2"] }
+        // The prompt must reach every 30-second window, not only the first one.
+        if let prompt { args += ["--prompt", prompt, "--carry-initial-prompt"] }
         return args
     }
 }
@@ -79,8 +101,9 @@ public struct WhisperRunner: Sendable {
 
         onPhase(.preparing)
         let wav = work.appendingPathComponent("audio.wav")
+        let qos: QualityOfService = options.gentle ? .utility : .userInitiated
         let convert = try await ProcessRunner.run(
-            ffmpeg,
+            ffmpeg, qos: qos,
             ["-nostdin", "-v", "error", "-y", "-i", file.path, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav.path],
             logFile: work.appendingPathComponent("ffmpeg.log")
         )
@@ -94,7 +117,7 @@ public struct WhisperRunner: Sendable {
         onPhase(.recognizing(fraction: 0))
         let base = work.appendingPathComponent("out")
         let result = try await ProcessRunner.run(
-            whisper,
+            whisper, qos: qos,
             options.whisperArguments(vadModel: toolchain.vadModel, outputBase: base) + [wav.path],
             logFile: work.appendingPathComponent("whisper.log")
         ) { line in
@@ -109,6 +132,7 @@ public struct WhisperRunner: Sendable {
         }
         let parsed = try WhisperOutput.parseJSON(data)
         let segments = Cleanup.clean(parsed.segments)
+        let warnings = QualityCheck.warnings(raw: parsed.segments, cleaned: segments, duration: duration)
         // With no speech whisper still reports its default "en"; that would be misleading.
         let language: String? = segments.isEmpty ? nil
             : options.translateToEnglish ? "en"
@@ -117,7 +141,8 @@ public struct WhisperRunner: Sendable {
             segments: segments,
             language: language,
             duration: duration,
-            model: options.model.name
+            model: options.model.name,
+            warnings: warnings
         )
     }
 }
@@ -129,7 +154,8 @@ enum ProcessRunner {
         var logTail: String
     }
 
-    static func run(_ executable: URL, _ arguments: [String], logFile: URL, onLine: (@Sendable (String) -> Void)? = nil) async throws -> Result {
+    static func run(_ executable: URL, qos: QualityOfService = .userInitiated, _ arguments: [String], logFile: URL,
+                    onLine: (@Sendable (String) -> Void)? = nil) async throws -> Result {
         FileManager.default.createFile(atPath: logFile.path, contents: nil)
         let log = try FileHandle(forWritingTo: logFile)
         defer { try? log.close() }
@@ -137,6 +163,7 @@ enum ProcessRunner {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments
+        process.qualityOfService = qos
         process.standardError = log
         process.standardInput = FileHandle.nullDevice
         let out = Pipe()

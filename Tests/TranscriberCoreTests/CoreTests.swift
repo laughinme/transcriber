@@ -247,3 +247,100 @@ final class Locked<T>: @unchecked Sendable {
     var value: T { lock.withLock { _value } }
     func mutate(_ f: (inout T) -> Void) { lock.withLock { f(&_value) } }
 }
+
+@Suite struct PromptTests {
+    let model = WhisperModel(url: URL(fileURLWithPath: "/m/ggml-large-v3-turbo.bin"))
+
+    @Test func vocabularyJoinsHintAndLines() {
+        let o = TranscriptionOptions(language: "ru", model: model, vocabulary: "Kubernetes\nИван Петров\n  ")
+        #expect(o.prompt == "Привет! Это голосовое сообщение, с пунктуацией. Kubernetes, Иван Петров")
+    }
+
+    @Test func vocabularyWorksWithoutHint() {
+        let o = TranscriptionOptions(language: "auto", model: model, vocabulary: "Kubernetes, FastAPI")
+        #expect(o.prompt == "Kubernetes, FastAPI")
+        #expect(TranscriptionOptions(language: "auto", model: model).prompt == nil)
+    }
+
+    @Test func vocabularyIsCapped() {
+        let o = TranscriptionOptions(language: "auto", model: model, vocabulary: String(repeating: "а", count: 2000))
+        #expect(o.prompt?.count == TranscriptionOptions.vocabularyLimit)
+    }
+
+    @Test func gentleModeLimitsThreads() {
+        let args = TranscriptionOptions(language: "ru", model: model, gentle: true)
+            .whisperArguments(vadModel: nil, outputBase: URL(fileURLWithPath: "/tmp/out"))
+        #expect(args.joined(separator: " ").contains("-t 2"))
+    }
+}
+
+@Suite struct QualityCheckTests {
+    @Test func detectsLoop() {
+        let loop = (0..<12).map { Segment(start: Double($0), end: Double($0) + 1, text: "Спасибо за внимание, друзья.") }
+        let other = (0..<20).map { Segment(start: Double(20 + $0), end: Double(21 + $0), text: "Обычная фраза номер \($0).") }
+        let w = QualityCheck.warnings(raw: loop + other, cleaned: other, duration: 45)
+        #expect(w.count == 1)
+        #expect(w[0].contains("12 раз"))
+    }
+
+    @Test func shortInterjectionsAreNotLoops() {
+        let raw = (0..<30).map { Segment(start: Double($0), end: Double($0) + 1, text: "Да.") }
+        #expect(QualityCheck.warnings(raw: raw, cleaned: raw, duration: 31).isEmpty)
+    }
+
+    @Test func detectsEarlyEnd() {
+        let s = [Segment(start: 0, end: 190, text: "Речь.")]
+        let w = QualityCheck.warnings(raw: s, cleaned: s, duration: 580)
+        #expect(w == ["Речь заканчивается на 3:10 из 9:40. Дальше тишина или обрыв, стоит проверить."])
+    }
+
+    @Test func shortRecordingsAreNotFlagged() {
+        let s = [Segment(start: 0, end: 5, text: "Речь.")]
+        #expect(QualityCheck.warnings(raw: s, cleaned: s, duration: 40).isEmpty)
+    }
+}
+
+@Suite struct CatalogTests {
+    @Test func catalogIsMultilingualAndHasOneRecommended() {
+        #expect(ModelCatalog.whisper.allSatisfy { !$0.file.contains(".en") })
+        #expect(ModelCatalog.whisper.filter(\.recommended).map(\.name) == ["large-v3-turbo"])
+        #expect(ModelCatalog.whisper.first?.downloadURL.absoluteString
+                == "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin?download=true")
+    }
+
+    @Test func parsesHuggingFaceTree() throws {
+        let json = #"[{"type":"file","path":"ggml-tiny.bin","size":77691713,"lfs":{"oid":"be07e048","size":77691713}},{"type":"file","path":"README.md","size":10}]"#
+        let info = try HuggingFace.parseInfo(Data(json.utf8), file: "ggml-tiny.bin")
+        #expect(info == RemoteFileInfo(size: 77_691_713, sha256: "be07e048"))
+        #expect(throws: DownloadError.metadataUnavailable) { try HuggingFace.parseInfo(Data(json.utf8), file: "nope.bin") }
+    }
+
+    @Test func checksumOfKnownBytes() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data("abc".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(try Checksum.sha256(of: url) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    }
+
+    @Test func turboIsDefaultOverLargeV3() {
+        let models = ["ggml-large-v3.bin", "ggml-large-v3-turbo.bin", "ggml-small.bin"]
+            .map { WhisperModel(url: URL(fileURLWithPath: "/m/\($0)")) }
+            .sorted { Toolchain.rank($0) < Toolchain.rank($1) }
+        #expect(models.map(\.name) == ["large-v3-turbo", "large-v3", "small"])
+    }
+}
+
+/// Real download from HuggingFace (the 0.9 MB VAD model). Opt-in: `TRANSCRIBER_NET=1 make test`.
+@Suite(.enabled(if: ProcessInfo.processInfo.environment["TRANSCRIBER_NET"] == "1"))
+struct DownloadTests {
+    @Test func downloadsAndVerifiesVADModel() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let phases = Locked<[ModelDownloader.Phase]>([])
+        let url = try await ModelDownloader().download(ModelCatalog.vad, into: dir) { p in phases.mutate { $0.append(p) } }
+        #expect(url.lastPathComponent == "ggml-silero-v6.2.0.bin")
+        #expect((try url.resourceValues(forKeys: [.fileSizeKey]).fileSize) == 885_098)
+        #expect(phases.value.last == .verifying)
+        #expect(phases.value.contains { if case .downloading = $0 { true } else { false } })
+    }
+}

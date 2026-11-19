@@ -61,13 +61,19 @@ public struct Toolchain: Sendable {
         return Toolchain(whisperCLI: binary("whisper-cli"), ffmpeg: binary("ffmpeg"), models: models, vadModel: vad)
     }
 
-    /// Preferred default: full large-v3, then turbo, then the biggest other model.
+    /// Default until the user picks one: turbo (fast and accurate), then full large-v3, then the
+    /// biggest other model. A model downloaded to compare should not silently become the default.
     static func rank(_ m: WhisperModel) -> Int {
         switch m.name {
-        case "large-v3": 0
-        case "large-v3-turbo": 1
+        case "large-v3-turbo": 0
+        case "large-v3": 1
         default: m.name.hasPrefix("large") ? 2 : 3
         }
+    }
+
+    /// Where downloaded models go.
+    public static func downloadDirectory(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home.appendingPathComponent(".whisper")
     }
 }
 

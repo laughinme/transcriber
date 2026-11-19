@@ -34,7 +34,10 @@ struct EmptyStateView: View {
             }
             Spacer()
             VStack(spacing: 8) {
-                OptionsBar()
+                HStack(spacing: 14) {
+                    ModelMenu()
+                    OptionsBar()
+                }
                 Text(summary)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
@@ -47,8 +50,7 @@ struct EmptyStateView: View {
     }
 
     private var summary: String {
-        let model = model.selectedModel?.name ?? "модель не найдена"
         let place = SaveMode(rawValue: saveMode) == .folder ? "в выбранную папку" : "рядом с исходным файлом"
-        return "Whisper \(model) · файлы сохраняются \(place) · ⌘, настройки"
+        return "Расшифровки сохраняются \(place) · ⌘, настройки"
     }
 }

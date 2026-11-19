@@ -12,6 +12,9 @@ enum Pref {
     static let saveMode = "saveMode"
     static let saveFolder = "saveFolder"
     static let showTimestamps = "showTimestamps"
+    static let vocabulary = "vocabulary"
+    static let gentle = "gentle"
+    static let settingsTab = "settingsTab"
 
     static let defaultLanguage = "ru"
     static let defaultFormats = "txt,md"
@@ -30,6 +33,9 @@ enum Pref {
             saveMode: SaveMode.nextToSource.rawValue,
             saveFolder: defaultFolder,
             showTimestamps: true,
+            vocabulary: "",
+            gentle: false,
+            settingsTab: SettingsTab.general.rawValue,
         ])
     }
 
@@ -69,4 +75,8 @@ struct Language: Identifiable, Hashable {
     static func title(for code: String) -> String {
         all.first { $0.code == code }?.title ?? code
     }
+}
+
+enum SettingsTab: String {
+    case general, models
 }

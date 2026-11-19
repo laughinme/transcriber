@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import TranscriberCore
 
 /// Lets scripts drive the app and capture its windows without Screen Recording permission.
 /// Enabled only when launched with TRANSCRIBER_DEBUG=1. Commands arrive as distributed
@@ -32,6 +33,7 @@ enum DebugHooks {
             if let i = Int(arg), model.jobs.indices.contains(i) { model.selection = model.jobs[i].id }
         case "settings":
             NSApp.activate()
+            UserDefaults.standard.set(arg == "models" ? SettingsTab.models.rawValue : SettingsTab.general.rawValue, forKey: Pref.settingsTab)
             openSettings?()
         case "appearance":
             NSApp.appearance = arg == "dark" ? NSAppearance(named: .darkAqua) : arg == "light" ? NSAppearance(named: .aqua) : nil
@@ -39,6 +41,10 @@ enum DebugHooks {
             let wh = arg.split(separator: "x").compactMap { Double($0) }
             if wh.count == 2, let w = NSApp.windows.first(where: { $0.isVisible && $0.title == "Расшифровка" }) {
                 w.setContentSize(NSSize(width: wh[0], height: wh[1]))
+            }
+        case "download":
+            if let entry = (ModelCatalog.whisper + [ModelCatalog.vad]).first(where: { $0.file == arg }) {
+                ModelStore.shared.download(entry)
             }
         case "dump":
             dump(into: URL(fileURLWithPath: arg))

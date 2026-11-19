@@ -49,6 +49,13 @@ struct JobDetail: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
+            ForEach(job.transcript?.warnings ?? [], id: \.self) { warning in
+                Label(warning, systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+            }
         }
         .padding(.horizontal, 24)
         .padding(.top, 12)

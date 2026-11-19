@@ -9,8 +9,8 @@ build:            ## debug build
 test:             ## unit tests (seconds)
 	swift test $(TEST_FLAGS)
 
-test-e2e:         ## + end-to-end run on the real whisper-cli
-	TRANSCRIBER_E2E=1 swift test $(TEST_FLAGS)
+test-e2e:         ## + end-to-end run on the real whisper-cli and a real model download
+	TRANSCRIBER_E2E=1 TRANSCRIBER_NET=1 swift test $(TEST_FLAGS)
 
 app:              ## release build packed into dist/Расшифровка.app
 	./scripts/build-app.sh

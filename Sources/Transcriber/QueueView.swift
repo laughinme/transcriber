@@ -21,7 +21,7 @@ struct QueueView: View {
             VStack(spacing: 0) {
                 Divider()
                 HStack {
-                    OptionsBar()
+                    ModelMenu()
                     Spacer(minLength: 8)
                     if model.jobs.contains(where: { $0.status.isFinished }) {
                         Button("Очистить") { model.clearFinished() }
@@ -31,7 +31,14 @@ struct QueueView: View {
                     }
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 9)
+                .padding(.top, 9)
+                HStack {
+                    OptionsBar()
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 6)
+                .padding(.bottom, 9)
             }
             .background(.bar)
         }

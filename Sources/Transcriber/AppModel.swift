@@ -55,7 +55,9 @@ final class AppModel {
     @ObservationIgnored private var worker: Task<Void, Never>?
     @ObservationIgnored private var current: (id: UUID, task: Task<Transcript, Error>)?
     @ObservationIgnored private let historyURL: URL = {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        // TRANSCRIBER_SUPPORT_DIR keeps demo and test runs out of the real history.
+        let dir = ProcessInfo.processInfo.environment["TRANSCRIBER_SUPPORT_DIR"].map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Transcriber", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("history.json")
@@ -71,9 +73,13 @@ final class AppModel {
 
     // MARK: Settings snapshot
 
+    /// Chosen model file; empty means "best installed" (see `Toolchain.rank`).
+    var modelPath: String = UserDefaults.standard.string(forKey: Pref.modelPath) ?? "" {
+        didSet { UserDefaults.standard.set(modelPath, forKey: Pref.modelPath) }
+    }
+
     var selectedModel: WhisperModel? {
-        let path = UserDefaults.standard.string(forKey: Pref.modelPath) ?? ""
-        return toolchain.models.first { $0.url.path == path } ?? toolchain.models.first
+        toolchain.models.first { $0.url.path == modelPath } ?? toolchain.models.first
     }
 
     func refreshToolchain() {
@@ -177,7 +183,9 @@ final class AppModel {
             model: model,
             useVAD: defaults.bool(forKey: Pref.useVAD),
             translateToEnglish: defaults.bool(forKey: Pref.translate),
-            punctuationHint: defaults.bool(forKey: Pref.punctuationHint)
+            punctuationHint: defaults.bool(forKey: Pref.punctuationHint),
+            vocabulary: defaults.string(forKey: Pref.vocabulary) ?? "",
+            gentle: defaults.bool(forKey: Pref.gentle)
         )
         let formats = Pref.formats(from: defaults.string(forKey: Pref.formats) ?? Pref.defaultFormats)
         let url = jobs[i].url

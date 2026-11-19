@@ -22,12 +22,15 @@ public struct Transcript: Codable, Hashable, Sendable {
     public var duration: Double?
     /// Model name, e.g. "large-v3-turbo".
     public var model: String?
+    /// Places worth checking by ear, from `QualityCheck`.
+    public var warnings: [String]?
 
-    public init(segments: [Segment], language: String? = nil, duration: Double? = nil, model: String? = nil) {
+    public init(segments: [Segment], language: String? = nil, duration: Double? = nil, model: String? = nil, warnings: [String]? = nil) {
         self.segments = segments
         self.language = language
         self.duration = duration
         self.model = model
+        self.warnings = warnings
     }
 
     public var isEmpty: Bool { segments.isEmpty }

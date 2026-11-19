@@ -49,6 +49,45 @@ struct MainToolbar: ToolbarContent {
     }
 }
 
+/// Switches between installed models; the catalog lives in Settings → Models.
+struct ModelMenu: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openSettings) private var openSettings
+    @AppStorage(Pref.settingsTab) private var settingsTab = SettingsTab.general.rawValue
+
+    var body: some View {
+        Menu {
+            if model.toolchain.models.isEmpty {
+                Text("Нет скачанных моделей")
+            } else {
+                Picker("Модель", selection: selection) {
+                    ForEach(model.toolchain.models) { m in
+                        Text("\(m.name)  ·  \(ByteCountFormatter.string(fromByteCount: m.size, countStyle: .file))")
+                            .tag(m.url.path)
+                    }
+                }
+                .pickerStyle(.inline)
+            }
+            Divider()
+            Button("Скачать другие модели…") {
+                settingsTab = SettingsTab.models.rawValue
+                openSettings()
+            }
+        } label: {
+            Label(model.selectedModel?.name ?? "Нет модели", systemImage: "cpu")
+        }
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .labelStyle(.titleAndIcon)
+        .fixedSize()
+        .help("Модель whisper для следующих файлов")
+    }
+
+    private var selection: Binding<String> {
+        Binding { model.selectedModel?.url.path ?? "" } set: { model.modelPath = $0 }
+    }
+}
+
 /// Language and output formats for the next files. Lives next to where files are dropped.
 struct OptionsBar: View {
     @AppStorage(Pref.language) private var language = Pref.defaultLanguage
@@ -124,6 +163,9 @@ struct DropOverlay: View {
 struct ToolchainBanner: View {
     @Environment(AppModel.self) private var model
 
+    @Environment(\.openSettings) private var openSettings
+    @AppStorage(Pref.settingsTab) private var settingsTab = SettingsTab.general.rawValue
+
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -132,7 +174,15 @@ struct ToolchainBanner: View {
                 Text(fix).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
             }
             Spacer()
-            Button("Проверить снова") { model.refreshToolchain() }
+            if model.toolchain.whisperCLI != nil && model.toolchain.ffmpeg != nil {
+                Button("Скачать модель…") {
+                    settingsTab = SettingsTab.models.rawValue
+                    openSettings()
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button("Проверить снова") { model.refreshToolchain() }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -149,6 +199,6 @@ struct ToolchainBanner: View {
     private var fix: String {
         let t = model.toolchain
         if t.whisperCLI == nil || t.ffmpeg == nil { return "Установите в Терминале: brew install whisper-cpp ffmpeg" }
-        return "Положите файл ggml-*.bin в папку ~/.whisper"
+        return "Скачайте модель в настройках (рекомендуется Large v3 Turbo, 1,6 ГБ) или положите свой ggml-*.bin в ~/.whisper"
     }
 }
