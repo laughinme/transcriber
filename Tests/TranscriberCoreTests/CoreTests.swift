@@ -92,6 +92,11 @@ import Testing
         #expect(transcript.plainText == "Первая фраза. Вторая фраза.\n\nПосле паузы.")
     }
 
+    @Test func paragraphStartsWithCapital() {
+        let p = Paragraphs.group([Segment(start: 0, end: 1, text: "бюджет, да."), Segment(start: 5, end: 6, text: "ёлки.")])
+        #expect(p.map(\.text) == ["Бюджет, да.", "Ёлки."])
+    }
+
     @Test func markdownHasTimestampsAndMeta() {
         let md = Renderer.render(transcript, as: .md, context: RenderContext(title: "голос.ogg"))
         #expect(md.hasPrefix("# голос.ogg\n\n1:21 · русский · расшифровано"))
@@ -178,6 +183,7 @@ import Testing
             .whisperArguments(vadModel: URL(fileURLWithPath: "/m/ggml-silero.bin"), outputBase: URL(fileURLWithPath: "/tmp/out"))
         #expect(args.contains("--vad"))
         #expect(args.contains("--prompt"))
+        #expect(args.contains("--carry-initial-prompt"))
         #expect(!args.contains("-tr"))
     }
 

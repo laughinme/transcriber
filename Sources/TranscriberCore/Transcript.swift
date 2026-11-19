@@ -66,6 +66,12 @@ public enum Paragraphs {
     public static let pauseThreshold = 2.0
     public static let softLimit = 450
 
+    /// Whisper cuts windows mid-sentence, so a paragraph may start lowercase.
+    static func capitalizedFirst(_ s: String) -> String {
+        guard let first = s.first, first.isLowercase else { return s }
+        return first.uppercased() + s.dropFirst()
+    }
+
     public static func group(_ segments: [Segment]) -> [Paragraph] {
         var result: [Paragraph] = []
         for segment in segments {
@@ -82,7 +88,7 @@ public enum Paragraphs {
                     continue
                 }
             }
-            result.append(Paragraph(start: segment.start, end: segment.end, text: text))
+            result.append(Paragraph(start: segment.start, end: segment.end, text: capitalizedFirst(text)))
         }
         return result
     }

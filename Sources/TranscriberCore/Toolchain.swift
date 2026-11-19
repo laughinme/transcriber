@@ -12,7 +12,7 @@ public struct WhisperModel: Hashable, Identifiable, Sendable {
         return n
     }
     public var size: Int64 {
-        (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map { Int64($0 ?? 0) } ?? 0
+        Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
     }
 }
 

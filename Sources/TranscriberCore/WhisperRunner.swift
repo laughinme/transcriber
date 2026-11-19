@@ -28,7 +28,8 @@ public struct TranscriptionOptions: Sendable, Hashable {
         var args = ["-m", model.url.path, "-l", language, "-mc", "0", "-oj", "-of", outputBase.path]
         if translateToEnglish { args.append("-tr") }
         if useVAD, let vadModel { args += ["--vad", "-vm", vadModel.path] }
-        if punctuationHint, let hint = Self.hints[language] { args += ["--prompt", hint] }
+        // The hint must reach every 30-second window, not only the first one.
+        if punctuationHint, let hint = Self.hints[language] { args += ["--prompt", hint, "--carry-initial-prompt"] }
         return args
     }
 }
@@ -107,9 +108,14 @@ public struct WhisperRunner: Sendable {
             throw TranscriptionError.unreadableOutput
         }
         let parsed = try WhisperOutput.parseJSON(data)
+        let segments = Cleanup.clean(parsed.segments)
+        // With no speech whisper still reports its default "en"; that would be misleading.
+        let language: String? = segments.isEmpty ? nil
+            : options.translateToEnglish ? "en"
+            : parsed.language ?? (options.language == "auto" ? nil : options.language)
         return Transcript(
-            segments: Cleanup.clean(parsed.segments),
-            language: options.translateToEnglish ? "en" : (parsed.language ?? (options.language == "auto" ? nil : options.language)),
+            segments: segments,
+            language: language,
             duration: duration,
             model: options.model.name
         )
